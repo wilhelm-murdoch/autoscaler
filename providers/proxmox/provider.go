@@ -2,6 +2,8 @@ package proxmox
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	px "github.com/luthermonson/go-proxmox"
 	"github.com/rs/zerolog/log"
@@ -24,8 +26,39 @@ type provider struct {
 	memory       int
 }
 
+const (
+	agentTag        = "woodpecker-autoscaler"
+	agentNamePrefix = "woodpecker-agent"
+)
+
 func New(ctx context.Context, c *cli.Command, config *config.Config) (types.Provider, error) {
 	p := &provider{}
+
+	opts := []px.Option{
+		px.WithAPIToken(c.String("proxmox-token-id"), c.String("proxmox-token-secret")),
+		px.WithTimeout(60 * time.Second),
+	}
+
+	if c.Bool("proxmox-insecure") {
+		opts = append(opts, px.WithInsecureSkipVerify())
+	}
+
+	client := px.NewClient(c.String("proxmox-url"), opts...)
+
+	p = &provider{
+		config:       config,
+		client:       client,
+		node:         c.String("proxmox-node"),
+		templateVMID: c.Int("proxmox-template-vmid"),
+		storage:      c.String("proxmox-storage"),
+		bridge:       c.String("proxmox-bridge"),
+		cores:        c.Int("proxmox-cores"),
+		memory:       c.Int("proxmox-memory"),
+	}
+
+	if p.node == "" || p.templateVMID == 0 {
+		return nil, fmt.Errorf("proxmox: node and template-vmid are required")
+	}
 
 	return p, nil
 }

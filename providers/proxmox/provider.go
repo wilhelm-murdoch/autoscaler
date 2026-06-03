@@ -64,6 +64,13 @@ func New(ctx context.Context, c *cli.Command, config *config.Config) (types.Prov
 }
 
 func (p *provider) DeployAgent(ctx context.Context, agent *woodpecker.Agent) error {
+	node, err := p.client.Node(ctx, p.node)
+	if err != nil {
+		return fmt.Errorf("could not get node: %w", err)
+	}
+
+	fmt.Println(node)
+
 	return nil
 }
 

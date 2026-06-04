@@ -2,7 +2,7 @@ package proxmox
 
 import "github.com/urfave/cli/v3"
 
-const Category = "Proxmox"
+const Category = "proxmox"
 
 var ProviderFlags = []cli.Flag{
 	// proxmox
@@ -38,7 +38,7 @@ var ProviderFlags = []cli.Flag{
 	},
 	&cli.StringFlag{
 		Name:     "proxmox-storage",
-		Value:    "local-lvm",
+		Value:    "local-zfs",
 		Usage:    "storage for the cloned rootfs",
 		Sources:  cli.EnvVars("WOODPECKER_PROXMOX_STORAGE"),
 		Category: Category,

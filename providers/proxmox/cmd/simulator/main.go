@@ -22,9 +22,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 
+	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v3"
 	"go.woodpecker-ci.org/autoscaler/config"
 	proxmox "go.woodpecker-ci.org/autoscaler/providers/proxmox"
@@ -41,9 +41,20 @@ func main() {
 				Name:  "deploy",
 				Usage: "clone, configure, start and provision one agent container",
 				Flags: []cli.Flag{
-					&cli.StringFlag{Name: "name", Value: "smoke-test-1", Usage: "the test agent name"},
-					&cli.StringFlag{Name: "token", Value: "beep-boop", Usage: "a fake per-agent token"},
-					&cli.BoolFlag{Name: "keep", Usage: "do not garbage collect; useful for debugging"},
+					&cli.StringFlag{
+						Name:  "name",
+						Value: "smoke-test-1",
+						Usage: "the test agent name",
+					},
+					&cli.StringFlag{
+						Name:  "token",
+						Value: "beep-boop",
+						Usage: "a fake per-agent token",
+					},
+					&cli.BoolFlag{
+						Name:  "keep",
+						Usage: "do not garbage collect; useful for debugging",
+					},
 				},
 				Action: deploy,
 			},
@@ -64,7 +75,8 @@ func main() {
 	}
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 
@@ -121,17 +133,18 @@ func list(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	names, err := provider.ListDeployedAgentNames(context.Background())
+	log.Info().Msgf("searching for deployed agents")
 	if err != nil {
 		return err
 	}
 
 	if len(names) == 0 {
-		fmt.Println("none found")
+		log.Info().Msgf("no agents found")
 		return nil
 	}
 
 	for _, name := range names {
-		fmt.Println(name)
+		log.Info().Msgf("agent found: %s", name)
 	}
 
 	return nil

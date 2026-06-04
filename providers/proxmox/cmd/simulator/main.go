@@ -6,16 +6,16 @@
 // but the provider and agent lifecycle is fully exercised.
 //
 //	go run ./providers/proxmox/simulator/main.go deploy \
-// 			--name smoke-test-1 \
-// 			--keep \
-//	    --proxmox-url https://pve.domain.tld:8006/api2/json \
-//	    --proxmox-token-id autoscaler@pve!agents \
-//	    --proxmox-token-secret xxxx \
-//	    --proxmox-node pve1 \
-// 			--proxmox-template-vmid 9000 \
-// 			--proxmox-insecure
-//	go run ./providers/proxmox/simulator/main.go list ...same connection flags...
-//	go run ./providers/proxmox/simulator/main.go remove --name smoke-test-1 ...same connection flags...
+//		--name smoke-test-1 \
+//		--keep \
+//		--proxmox-url https://pve.domain.tld:8006/api2/json \
+//		--proxmox-token-id autoscaler@pve!agents \
+//		--proxmox-token-secret xxxx \
+//		--proxmox-node pve1 \
+//		--proxmox-template-vmid 9000 \
+//		--proxmox-insecure
+//	go run ./providers/proxmox/simulator/main.go list ... same flags as `deploy` ...
+//	go run ./providers/proxmox/simulator/main.go remove --name smoke-test-1  ... same flags as `deploy` ...
 
 package main
 

@@ -1,8 +1,11 @@
 package proxmox
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -17,14 +20,15 @@ import (
 )
 
 type provider struct {
-	config       *config.Config
-	client       *px.Client
-	node         string
-	templateVMID int
-	storage      string
-	bridge       string
-	cores        int
-	memory       int
+	config        *config.Config
+	client        *px.Client
+	node          string
+	templateVMID  int
+	storageRootFS string
+	storageISO    string
+	bridge        string
+	cores         int
+	memory        int
 }
 
 const agentTag = "woodpecker-autoscaler"
@@ -39,17 +43,25 @@ func New(ctx context.Context, c *cli.Command, config *config.Config) (types.Prov
 		opts = append(opts, px.WithInsecureSkipVerify())
 	}
 
+	if c.Bool("proxmox-debug") {
+		hc := &http.Client{Transport: httpDebugger{http.DefaultTransport}}
+		opts = append(opts, px.WithHTTPClient(hc))
+	}
+
 	client := px.NewClient(c.String("proxmox-url"), opts...)
 
+	config.Image = "woodpeckerci/woodpecker-agent:latest"
+
 	p := &provider{
-		config:       config,
-		client:       client,
-		node:         c.String("proxmox-node"),
-		templateVMID: c.Int("proxmox-template-vmid"),
-		storage:      c.String("proxmox-storage"),
-		bridge:       c.String("proxmox-bridge"),
-		cores:        c.Int("proxmox-cores"),
-		memory:       c.Int("proxmox-memory"),
+		config:        config,
+		client:        client,
+		node:          c.String("proxmox-node"),
+		templateVMID:  c.Int("proxmox-template-vmid"),
+		storageRootFS: c.String("proxmox-storage-rootfs"),
+		storageISO:    c.String("proxmox-storage-iso"),
+		bridge:        c.String("proxmox-bridge"),
+		cores:         c.Int("proxmox-cores"),
+		memory:        c.Int("proxmox-memory"),
 	}
 
 	if p.node == "" || p.templateVMID == 0 {
@@ -58,6 +70,8 @@ func New(ctx context.Context, c *cli.Command, config *config.Config) (types.Prov
 
 	return p, nil
 }
+
+// TODO: rename node to nodeTarget and templateNode(Name) to nodeTemplate
 
 func (p *provider) DeployAgent(ctx context.Context, agent *woodpecker.Agent) error {
 	node, err := p.client.Node(ctx, p.node)
@@ -93,12 +107,11 @@ func (p *provider) DeployAgent(ctx context.Context, agent *woodpecker.Agent) err
 	if !template.Template {
 		return fmt.Errorf("%s: vm %d is not a template", Category, p.templateVMID)
 	}
-	fmt.Fprintf(os.Stderr, "DEBUG clone source node = %q, target = %q\n", template.Node, p.node)
 
 	_, cloneTask, err := template.Clone(ctx, &px.VirtualMachineCloneOptions{
 		NewID:   newVMID,
 		Name:    agent.Name,
-		Storage: p.storage,
+		Storage: p.storageRootFS,
 		Full:    true,
 		Target:  p.node,
 	})
@@ -112,16 +125,35 @@ func (p *provider) DeployAgent(ctx context.Context, agent *woodpecker.Agent) err
 
 	vm, err := node.VirtualMachine(ctx, newVMID)
 	if err != nil {
-		return fmt.Errorf("get new vm: %w", err)
+		return wrapError("could not get new agent vm", err)
 	}
 
 	userData, err := cloudinit.RenderUserDataTemplate(p.config, agent, cloudinit.RenderOption{})
 	if err != nil {
-		return wrapError("cloudinit.RenderUserDataTemplate", err)
+		return wrapError("could not render user data", err)
 	}
 
-	fmt.Println(userData)
-	fmt.Println(vm.Status)
+	// CloudInit builds the ISO, uploads it to storage, attaches it to the given
+	// device and sets boot to "<current boot>;<device>". The clone's cached Boot
+	// is empty, so seed a valid order here to avoid PVE rejecting ";ide2".
+	vm.VirtualMachineConfig.Boot = "order=virtio0"
+
+	if err := vm.CloudInit(ctx, "ide2", userData, "", "", "", px.WithCloudInitStorage(p.storageISO)); err != nil {
+		return wrapError("could not attach user data to vm", err)
+	}
+
+	startTask, err := vm.Start(ctx)
+	if err != nil {
+		return wrapError("could not start agent vm", err)
+	}
+
+	if err := waitFor(ctx, startTask); err != nil {
+		return wrapError("agent vm timed out", err)
+	}
+
+	if err := vm.WaitForAgent(ctx, 120); err != nil {
+		return wrapError("qemu agent timed out", err)
+	}
 
 	return nil
 }
@@ -153,7 +185,9 @@ func (p *provider) ListDeployedAgentNames(ctx context.Context) ([]string, error)
 
 // The desired template may, or may not, exist on the target cluster node. This
 // method allows us to search all cluster nodes for the desired template and
-// return the associated node.
+// return the associated node. Note that in order to use a template located on
+// a seperate node it must be stored on shared storage accessable to the target
+// node as well.
 func (p *provider) resolveVMTemplateNode(ctx context.Context, vmid int) (string, error) {
 	cluster, err := p.client.Cluster(ctx)
 	if err != nil {
@@ -187,4 +221,15 @@ func waitFor(ctx context.Context, t *px.Task) error {
 	}
 
 	return t.Wait(ctx, 1*time.Second, 5*time.Minute)
+}
+
+type httpDebugger struct{ rt http.RoundTripper }
+
+func (d httpDebugger) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.Body != nil {
+		b, _ := io.ReadAll(r.Body)
+		fmt.Fprintf(os.Stderr, ">> %s %s\n   body: %s\n", r.Method, r.URL, b)
+		r.Body = io.NopCloser(bytes.NewReader(b))
+	}
+	return d.rt.RoundTrip(r)
 }

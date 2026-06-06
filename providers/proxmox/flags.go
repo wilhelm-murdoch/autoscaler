@@ -37,10 +37,17 @@ var ProviderFlags = []cli.Flag{
 		Category: Category,
 	},
 	&cli.StringFlag{
-		Name:     "proxmox-storage",
+		Name:     "proxmox-storage-rootfs",
 		Value:    "local-zfs",
 		Usage:    "storage for the cloned rootfs",
-		Sources:  cli.EnvVars("WOODPECKER_PROXMOX_STORAGE"),
+		Sources:  cli.EnvVars("WOODPECKER_PROXMOX_STORAGE_ROOTFS"),
+		Category: Category,
+	},
+	&cli.StringFlag{
+		Name:     "proxmox-storage-iso",
+		Value:    "local",
+		Usage:    "storage for the iso + cloudinit",
+		Sources:  cli.EnvVars("WOODPECKER_PROXMOX_STORAGE_ISO"),
 		Category: Category,
 	},
 	&cli.StringFlag{
@@ -67,6 +74,12 @@ var ProviderFlags = []cli.Flag{
 		Name:     "proxmox-insecure",
 		Usage:    "skip TLS verification (lab only)",
 		Sources:  cli.EnvVars("WOODPECKER_PROXMOX_INSECURE"),
+		Category: Category,
+	},
+	&cli.BoolFlag{
+		Name:     "proxmox-debug",
+		Usage:    "print Proxmox HTTP requests and responses to stdout",
+		Sources:  cli.EnvVars("WOODPECKER_PROXMOX_DEBUG"),
 		Category: Category,
 	},
 }

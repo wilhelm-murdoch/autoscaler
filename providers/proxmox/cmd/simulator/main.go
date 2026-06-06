@@ -43,7 +43,7 @@ func main() {
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:  "name",
-						Value: "smoke-test-1",
+						Value: "woodpecker-agent-simulated",
 						Usage: "the test agent name",
 					},
 					&cli.StringFlag{
@@ -156,7 +156,8 @@ func remove(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	agent := &woodpecker.Agent{Name: cmd.String("name")}
-
-	return provider.RemoveAgent(context.Background(), agent)
+	return provider.RemoveAgent(
+		context.Background(),
+		&woodpecker.Agent{Name: cmd.String("name")},
+	)
 }

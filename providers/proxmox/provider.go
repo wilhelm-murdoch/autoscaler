@@ -9,8 +9,10 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	px "github.com/luthermonson/go-proxmox"
+	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v3"
 
 	"go.woodpecker-ci.org/autoscaler/config"
@@ -31,7 +33,10 @@ type provider struct {
 	memory        int
 }
 
-const agentTag = "woodpecker-autoscaler"
+const (
+	agentTag         = "woodpecker-autoscaler"
+	agentDescription = "Provisioned by the Woodpecker CI Autoscaler Proxmox provider."
+)
 
 func New(ctx context.Context, c *cli.Command, config *config.Config) (types.Provider, error) {
 	opts := []px.Option{
@@ -128,6 +133,10 @@ func (p *provider) DeployAgent(ctx context.Context, agent *woodpecker.Agent) err
 		return wrapError("could not get new agent vm", err)
 	}
 
+	if err := vm.ConfigSync(ctx, px.VirtualMachineOption{Name: "description", Value: agentDescription}); err != nil {
+		return wrapError("could not set agent vm options", err)
+	}
+
 	userData, err := cloudinit.RenderUserDataTemplate(p.config, agent, cloudinit.RenderOption{})
 	if err != nil {
 		return wrapError("could not render user data", err)
@@ -151,7 +160,7 @@ func (p *provider) DeployAgent(ctx context.Context, agent *woodpecker.Agent) err
 		return wrapError("agent vm timed out", err)
 	}
 
-	if err := vm.WaitForAgent(ctx, 120); err != nil {
+	if err := waitForQemuAgent(ctx, vm, 180*time.Second); err != nil {
 		return wrapError("qemu agent timed out", err)
 	}
 
@@ -228,8 +237,46 @@ type httpDebugger struct{ rt http.RoundTripper }
 func (d httpDebugger) RoundTrip(r *http.Request) (*http.Response, error) {
 	if r.Body != nil {
 		b, _ := io.ReadAll(r.Body)
-		fmt.Fprintf(os.Stderr, ">> %s %s\n   body: %s\n", r.Method, r.URL, b)
+		fmt.Fprintf(os.Stderr, ">> %s %s\n   body: %s\n", r.Method, r.URL, debugBody(b))
 		r.Body = io.NopCloser(bytes.NewReader(b))
 	}
 	return d.rt.RoundTrip(r)
+}
+
+// debugBody returns the body as a string, or a placeholder when it contains
+// binary data that would corrupt terminal output.
+func debugBody(b []byte) string {
+	if !utf8.Valid(b) || bytes.IndexByte(b, 0) != -1 {
+		return "<skipping binary output>"
+	}
+	return string(b)
+}
+
+// waitForQemuAgent polls the guest agent until it responds or the timeout
+// elapses. Unlike px.VirtualMachine.WaitForAgent, which only retries on the
+// exact "500 QEMU guest agent is not running" message and returns immediately
+// on any other error, this treats every error as "not ready yet" so transient
+// boot-time responses don't abort the wait early.
+func waitForQemuAgent(ctx context.Context, vm *px.VirtualMachine, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		if _, err := vm.AgentOsInfo(ctx); err == nil {
+			log.Info().Msgf("qemu agent up")
+			return nil
+		}
+
+		if time.Now().After(deadline) {
+			return fmt.Errorf("%s: guest agent did not respond within %s", Category, timeout)
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			log.Info().Msgf("waiting for qemu agent")
+		}
+	}
 }

@@ -55,8 +55,6 @@ func New(ctx context.Context, c *cli.Command, config *config.Config) (types.Prov
 
 	client := px.NewClient(c.String("proxmox-url"), opts...)
 
-	config.Image = "woodpeckerci/woodpecker-agent:latest"
-
 	p := &provider{
 		config:        config,
 		client:        client,
@@ -76,10 +74,8 @@ func New(ctx context.Context, c *cli.Command, config *config.Config) (types.Prov
 	return p, nil
 }
 
-// TODO: rename node to nodeTarget and templateNode(Name) to nodeTemplate
-
 func (p *provider) DeployAgent(ctx context.Context, agent *woodpecker.Agent) error {
-	node, err := p.client.Node(ctx, p.node)
+	nodeTarget, err := p.client.Node(ctx, p.node)
 	if err != nil {
 		return wrapError("could not get node", err)
 	}
@@ -94,17 +90,17 @@ func (p *provider) DeployAgent(ctx context.Context, agent *woodpecker.Agent) err
 		return wrapError("could not reserve VMID", err)
 	}
 
-	templateNodeName, err := p.resolveVMTemplateNode(ctx, p.templateVMID)
+	nodeTemplateName, err := p.resolveVMTemplateNode(ctx, p.templateVMID)
 	if err != nil {
 		return wrapError("could not resolve template node name", err)
 	}
 
-	templateNode, err := p.client.Node(ctx, templateNodeName) // talk to B, the owner
+	noteTemplate, err := p.client.Node(ctx, nodeTemplateName) // talk to B, the owner
 	if err != nil {
 		return wrapError("could not get template node", err)
 	}
 
-	template, err := templateNode.VirtualMachine(ctx, p.templateVMID)
+	template, err := noteTemplate.VirtualMachine(ctx, p.templateVMID)
 	if err != nil {
 		return wrapError(fmt.Sprintf("could not get template vm %d", p.templateVMID), err)
 	}
@@ -128,7 +124,7 @@ func (p *provider) DeployAgent(ctx context.Context, agent *woodpecker.Agent) err
 		return wrapError("clone task failed", err)
 	}
 
-	vm, err := node.VirtualMachine(ctx, newVMID)
+	vm, err := nodeTarget.VirtualMachine(ctx, newVMID)
 	if err != nil {
 		return wrapError("could not get new agent vm", err)
 	}

@@ -82,12 +82,12 @@ func main() {
 
 // buildProvider wires the real `New()` exactly as the autoscaler would.
 func buildProvider(ctx context.Context, cmd *cli.Command) (engineProvider, error) {
-	cfg := &config.Config{
+	config := &config.Config{
 		GRPCAddress: cmd.String("grpc-addr"),
 		GRPCSecure:  cmd.Bool("grpc-secure"),
 	}
 
-	return proxmox.New(ctx, cmd, cfg)
+	return proxmox.New(ctx, cmd, config)
 }
 
 // engineProvider is the subset of `engine.Provider` we call here.

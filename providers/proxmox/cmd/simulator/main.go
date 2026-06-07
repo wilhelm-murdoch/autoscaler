@@ -108,21 +108,18 @@ func deploy(ctx context.Context, cmd *cli.Command) error {
 		Token: cmd.String("token"),
 	}
 
-	fmt.Printf("deploying %q...\n", agent.Name)
+	log.Info().Msgf("deploying %q...\n", agent.Name)
 	if err := provider.DeployAgent(ctx, agent); err != nil {
 		return fmt.Errorf("deploy failed: %w", err)
 	}
-	fmt.Println("deployed OK")
+	log.Info().Msg("agent deployed OK")
 
 	if cmd.Bool("keep") {
-		fmt.Println("--keep set; leaving it running. Inspect with:")
-		fmt.Printf("  pct list | grep %s\n", agent.Name)
-		fmt.Printf("  pct exec <vmid> -- cat /etc/woodpecker-agent.env\n")
-		fmt.Printf("  pct exec <vmid> -- systemctl status woodpecker-agent\n")
+		log.Info().Msg("--keep flag specified; exiting without tearing down")
 		return nil
 	}
 
-	fmt.Println("tearing down...")
+	log.Info().Msg("tearing agent down...")
 	return provider.RemoveAgent(ctx, agent)
 }
 

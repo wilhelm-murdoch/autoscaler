@@ -85,22 +85,28 @@ const (
 	deviceCountIDE    = 4
 )
 
+type deviceGroup struct {
+	prefix  string
+	count   int
+	devices map[string]string
+}
+
+func returnDeviceGroups(cfg *px.VirtualMachineConfig) []deviceGroup {
+	return []deviceGroup{
+		{"virtio", deviceCountVirtIO, cfg.VirtIOs},
+		{"scsi", deviceCountSCSI, cfg.SCSIs},
+		{"sata", deviceCountSATA, cfg.SATAs},
+		{"ide", deviceCountIDE, cfg.IDEs},
+	}
+}
+
 // resolveBootDisk returns the device name (e.g. "scsi0", "virtio0") of the
 // clone's primary OS disk and skips cdrom/cloud-init drives. It is the fallback
 // used when the template exposes no boot order of its own. Buses are scanned in
 // PVE's own preference order and, within a bus, from the lowest index up, so the
 // result is deterministic.
 func resolveBootDisk(cfg *px.VirtualMachineConfig) (string, error) {
-	groups := []struct {
-		prefix  string
-		count   int
-		devices map[string]string
-	}{
-		{"virtio", deviceCountVirtIO, cfg.VirtIOs},
-		{"scsi", deviceCountSCSI, cfg.SCSIs},
-		{"sata", deviceCountSATA, cfg.SATAs},
-		{"ide", deviceCountIDE, cfg.IDEs},
-	}
+	groups := returnDeviceGroups(cfg)
 
 	for _, group := range groups {
 		for i := range group.count {
@@ -120,6 +126,33 @@ func resolveBootDisk(cfg *px.VirtualMachineConfig) (string, error) {
 	}
 
 	return "", fmt.Errorf("%s: no bootable disk found on clone", Category)
+}
+
+// disableDiskBackupOptions returns VM options that append backup=0 to every
+// non-cdrom disk on the clone, excluding them from PVE backup jobs. Disks that
+// already carry an explicit backup= flag are left untouched, and cdrom drives
+// are skipped since the flag is meaningless there.
+func disableDiskBackupOptions(cfg *px.VirtualMachineConfig) []px.VirtualMachineOption {
+	groups := returnDeviceGroups(cfg)
+
+	var options []px.VirtualMachineOption
+	for _, group := range groups {
+		for i := range group.count {
+			name := fmt.Sprintf("%s%d", group.prefix, i)
+			value, exists := group.devices[name]
+			if !exists {
+				continue
+			}
+
+			if strings.Contains(value, "media=cdrom") || strings.Contains(value, "backup=") {
+				continue
+			}
+
+			options = append(options, px.VirtualMachineOption{Name: name, Value: value + ",backup=0"})
+		}
+	}
+
+	return options
 }
 
 func wrapError(message string, err error) error {

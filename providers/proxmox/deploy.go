@@ -140,12 +140,15 @@ func (p *provider) DeployAgent(ctx context.Context, agent *woodpecker.Agent) err
 	wrapInfo("... qemu state ready")
 
 	// This will clobber any values derived from the specified template.
+	wrapInfo("overriding vm options; tags, description and disk backups")
 	vmOptions := []px.VirtualMachineOption{
 		px.VirtualMachineOption{Name: "description", Value: agentDescription},
 		px.VirtualMachineOption{Name: "tags", Value: agentTag},
 	}
 
-	wrapInfo("overriding vm description and tag assignments")
+	// Ensure we don't accidentally backup these ephemeral agents.
+	vmOptions = append(vmOptions, disableDiskBackupOptions(vm.VirtualMachineConfig)...)
+
 	if err := vm.ConfigSync(ctx, vmOptions...); err != nil {
 		return wrapError("could not set agent vm options", err)
 	}

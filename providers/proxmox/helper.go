@@ -47,14 +47,8 @@ func containsTag(tags string) bool {
 // resolveAgentVMs returns every autoscaler-owned VM whose name matches the given
 // agent name, searched cluster-wide. The autoscaler mints a unique name per
 // agent, so in normal operation this resolves to at most one VM. Returning all
-// matches keeps RemoveAgent able to garbage-collect strays that share a name
-// (e.g. repeated simulator deploys with a fixed --name and --keep). The tag
-// check guards against ever touching a VM the autoscaler did not create.
-//
-// VMs are enumerated per node via /nodes/{node}/qemu rather than via
-// /cluster/resources: the latter is served from the pmxcfs status cache and lags
-// roughly ten seconds, so a freshly cloned VM is invisible to it and removal
-// would silently no-op right after a deploy.
+// matches keeps RemoveAgent able to garbage-collect strays that share a name.
+// The tag check guards against ever touching a VM the autoscaler did not create.
 func (p *provider) resolveAgentVMs(ctx context.Context, name string) ([]*px.VirtualMachine, error) {
 	nodes, err := p.client.Nodes(ctx)
 	if err != nil {

@@ -42,14 +42,25 @@ func main() {
 				Usage: "clone, configure, start and provision one agent container",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name:  "name",
+						Name:  "agent-name",
 						Value: "woodpecker-agent-simulated",
 						Usage: "the test agent name",
 					},
 					&cli.StringFlag{
-						Name:  "token",
-						Value: "beep-boop",
-						Usage: "a fake per-agent token",
+						Name:    "woodpecker-token",
+						Usage:   "woodpecker api token",
+						Sources: cli.EnvVars("WOODPECKER_TOKEN"),
+					},
+					&cli.StringFlag{
+						Name:    "woodpecker-server",
+						Usage:   "woodpecker server address",
+						Sources: cli.EnvVars("WOODPECKER_SERVER"),
+					},
+					&cli.StringFlag{
+						Name:    "woodpecker-agent-image",
+						Value:   "woodpeckerci/woodpecker-agent:next",
+						Usage:   "agent image to use",
+						Sources: cli.EnvVars("WOODPECKER_AGENT_IMAGE"),
 					},
 					&cli.BoolFlag{
 						Name:  "keep",
@@ -83,8 +94,13 @@ func main() {
 // buildProvider wires the real `New()` exactly as the autoscaler would.
 func buildProvider(ctx context.Context, cmd *cli.Command) (engineProvider, error) {
 	config := &config.Config{
-		GRPCAddress: cmd.String("grpc-addr"),
-		GRPCSecure:  cmd.Bool("grpc-secure"),
+		GRPCAddress: cmd.String("woodpecker-grpc-address"),
+		GRPCSecure:  cmd.Bool("woodpecker-grpc-secure"),
+		Image:       cmd.String("woodpecker-agent-image"),
+		Environment: map[string]string{
+			"WOODPECKER_SERVER":       cmd.String("woodpecker-server"),
+			"WOODPECKER_AGENT_SECRET": cmd.String("woodpecker-token"),
+		},
 	}
 
 	return proxmox.New(ctx, cmd, config)
@@ -104,22 +120,22 @@ func deploy(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	agent := &woodpecker.Agent{
-		Name:  cmd.String("name"),
-		Token: cmd.String("token"),
+		Name:  cmd.String("agent-name"),
+		Token: cmd.String("woodpecker-token"),
 	}
 
-	log.Info().Msgf("deploying %q...\n", agent.Name)
+	log.Info().Msgf("proxmox: deploying %s", agent.Name)
 	if err := provider.DeployAgent(ctx, agent); err != nil {
-		return fmt.Errorf("deploy failed: %w", err)
+		return fmt.Errorf("proxmox: deploy failed: %w", err)
 	}
-	log.Info().Msg("agent deployed OK")
+	log.Info().Msg("proxmox: agent deployed OK")
 
 	if cmd.Bool("keep") {
 		log.Info().Msg("--keep flag specified; exiting without tearing down")
 		return nil
 	}
 
-	log.Info().Msg("tearing agent down...")
+	log.Info().Msg("proxmox: tearing agents down...")
 	return provider.RemoveAgent(ctx, agent)
 }
 
@@ -130,18 +146,18 @@ func list(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	names, err := provider.ListDeployedAgentNames(context.Background())
-	log.Info().Msgf("searching for deployed agents")
+	log.Info().Msgf("proxmox: searching for deployed agents")
 	if err != nil {
 		return err
 	}
 
 	if len(names) == 0 {
-		log.Info().Msgf("no agents found")
+		log.Info().Msgf("proxmox: no agents found")
 		return nil
 	}
 
 	for _, name := range names {
-		log.Info().Msgf("agent found: %s", name)
+		log.Info().Msgf("proxmox: agent found: %s", name)
 	}
 
 	return nil

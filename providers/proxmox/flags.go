@@ -50,6 +50,13 @@ var ProviderFlags = []cli.Flag{
 		Sources:  cli.EnvVars("WOODPECKER_PROXMOX_STORAGE_ISO"),
 		Category: Category,
 	},
+	&cli.BoolFlag{
+		Name:     "proxmox-full-clone",
+		Value:    true,
+		Usage:    "whether to create a full, or linked, clone from the specified template",
+		Sources:  cli.EnvVars("WOODPECKER_PROXMOX_FULL_CLONE"),
+		Category: Category,
+	},
 	&cli.StringFlag{
 		Name:     "proxmox-bridge",
 		Value:    "vmbr0",
